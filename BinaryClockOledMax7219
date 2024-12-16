@@ -1,0 +1,139 @@
+// 1=ON, 0=OFF.
+#include <ESP8266WiFi.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <LedControl.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h>
+
+// WiFi credentials
+const char* ssid = "yourSSID"
+const char* password = "yourPASSWORD";
+
+// NTP client
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 7200, 60000); // Adjust timezone if needed
+
+// MAX7219 Pins
+#define DIN_PIN D7
+#define CLK_PIN D5
+#define CS_PIN D8
+LedControl lc = LedControl(DIN_PIN, CLK_PIN, CS_PIN, 1);
+
+// OLED configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// Convert decimal to binary (8 bits)
+String decimalToBinary(int num, int bits) {
+  String binary = "";
+  for (int i = bits - 1; i >= 0; i--) {
+    binary += (num >> i) & 1 ? "1" : "0";
+  }
+  return binary;
+}
+
+// Display binary values on MAX7219
+void displayBinaryOnMAX7219(int hours, int minutes, int seconds) {
+  lc.clearDisplay(0); // Clear previous data
+
+  // Convert to binary strings (8 bits)
+  String hoursBinary = decimalToBinary(hours, 8);   // 8 bits for hours (max 23)
+  String minutesBinary = decimalToBinary(minutes, 8); // 8 bits for minutes (max 59)
+  String secondsBinary = decimalToBinary(seconds, 8); // 8 bits for seconds (max 59)
+
+  // Display Hours (Row 0)
+  for (int i = 0; i < hoursBinary.length(); i++) {
+    lc.setLed(0, 0, i, hoursBinary[i] == '1');
+  }
+
+  // Display Minutes (Row 1)
+  for (int i = 0; i < minutesBinary.length(); i++) {
+    lc.setLed(0, 1, i, minutesBinary[i] == '1');
+  }
+
+  // Display Seconds (Row 2)
+  for (int i = 0; i < secondsBinary.length(); i++) {
+    lc.setLed(0, 2, i, secondsBinary[i] == '1');
+  }
+}
+
+// Display binary values on OLED
+void displayBinaryOnOLED(int hours, int minutes, int seconds) {
+  // Convert to binary strings
+  String hoursBinary = decimalToBinary(hours, 8);   // 8 bits for hours
+  String minutesBinary = decimalToBinary(minutes, 8); // 8 bits for minutes
+  String secondsBinary = decimalToBinary(seconds, 8); // 8 bits for seconds
+
+  // Update OLED
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0, 0);
+  display.println("Binary Clock");
+  display.setCursor(0, 15);
+  display.print("Hours: ");
+  display.println(hoursBinary);
+  display.setCursor(0, 30);
+  display.print("Minutes: ");
+  display.println(minutesBinary);
+  display.setCursor(0, 45);
+  display.print("Seconds: ");
+  display.println(secondsBinary);
+
+  
+  display.display();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi");
+
+  // Initialize NTP client
+  timeClient.begin();
+
+  // Initialize MAX7219
+  lc.shutdown(0, false); // Wake up MAX7219
+  lc.setIntensity(0, 8); // Set brightness (0 to 15)
+  lc.clearDisplay(0);    // Clear the display
+
+  // Initialize OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Ensure correct address
+    Serial.println("SSD1306 allocation failed");
+    for (;;);
+  }
+  display.clearDisplay();
+  display.display();
+}
+
+void loop() {
+  timeClient.update();
+
+  // Get the current time
+  int hours = timeClient.getHours();
+  int minutes = timeClient.getMinutes();
+  int seconds = timeClient.getSeconds();
+
+  // Print to Serial Monitor for Debugging
+  Serial.print("Hours: ");
+  Serial.println(hours);
+  Serial.print("Minutes: ");
+  Serial.println(minutes);
+  Serial.print("Seconds: ");
+  Serial.println(seconds);
+
+  // Update MAX7219 and OLED
+  displayBinaryOnMAX7219(hours, minutes, seconds);
+  displayBinaryOnOLED(hours, minutes, seconds);
+
+  delay(1000); // Update every second
+}
